@@ -1,0 +1,8 @@
+{
+  "name": "hall-e",
+  "version": "0.0.1",
+  "description": "A PhantomJS-powered library for interacting with Hall (http://hall.com) chatrooms.",
+  "main": "index.js",
+  "author": "David Cornu",
+  "license": "BSD"
+}
