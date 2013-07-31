@@ -154,7 +154,9 @@ HallClient.prototype.connect = function(callback){
 
   this.client.on('event', function(message){
     if (message.data.name !== 'ROOM_ITEM_NEW') return;
-    this.emit('message', JSON.parse(message.data.args[0]));
+    var parsedMessage = JSON.parse(message.data.args[0]);
+    if (parsedMessage.agent._id === this.userInfo.id) return;
+    this.emit('message', parsedMessage);
   }.bind(this));
 
   this.client.once('connect', function(){
@@ -179,5 +181,61 @@ HallClient.prototype.joinRoom = function(roomId){
         admin:          false
       },
     member_uuid: this.userInfo.uuid
+  });
+};
+
+HallClient.prototype.postMessage = function(message, callback){
+  var originId = (Math.random()*11 + '').replace('.','');
+  request({
+    method: 'POST',
+    jar: this.cookies,
+    url: 'https://hall.com/api/1/rooms/groups/' + this.room._id + '/room_items',
+    headers: { 'x-csrf-token': this.csrfToken },
+    json: {
+      "rendered": false,
+      "nested": true,
+      "time_threshold_reached": false,
+      "first_of_day": false,
+      "current_user": true,
+      "contains_code": false,
+      "allow_html": false,
+      "agent": {
+        "admin": false,
+        "is_me": false,
+        "loading": false,
+        "invitable": true,
+        "photo_url": null,
+        "display_name": this.userInfo.name,
+        "friendship": null,
+        "connected": false,
+        "connectivity_on": 0,
+        "global": false,
+        "guided": false,
+        "last_friendship": null,
+        "user_status": {
+          "message": null,
+          "status": null
+        },
+        "_id": this.userInfo.id
+      },
+      "type": "Comment",
+      "message": {
+        "html": message,
+        "plain": message
+      },
+      "mentions": message,
+      "item_origin_id": originId,
+      "room_id": this.room._id,
+      "room_title": this.room.title,
+      "is_attachment": false,
+      "is_notepad": false,
+      "is_meeting": false,
+      "is_service_hook": false,
+      "origin_id": originId
+    }
+  }, function(err, response){
+    if (err) return callback(err);
+    if (response.statusCode !== 200) return callback(new Error('Could not post message'));
+    callback(null, response.body);
   });
 };
