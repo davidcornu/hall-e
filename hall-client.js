@@ -24,6 +24,7 @@ function HallClient(username, password){
   this.streamConfig = null;
   this.userInfo     = null;
   this.rooms        = null;
+  this.room         = null;
   this.client       = null;
   this.init();
 };
@@ -65,8 +66,8 @@ HallClient.prototype.login = function(callback){
     jar: this.cookies,
     form: {
       'authenticity_token': this.csrfToken,
-      'user[email]': this.username,
-      'user[password]': this.password
+      'user[email]':        this.username,
+      'user[password]':     this.password
     }
   }, function(err, response){
     if (err) return callback(err);
@@ -90,9 +91,13 @@ function extractStreamConfig(str){
 }
 
 function extractUserInfo(str){
-  var uuidRxp = /uuid\s*:\s*'([^']+)'/m;
-  if (!uuidRxp.test(str)) return null;
-  return { uuid: uuidRxp.exec(str)[1] };
+  return _.chain({
+    uuid: /uuid\s*:\s*'([^']+)'/,
+    name: /"display_name"\s*:\s*"([^"]+)"/,
+    id:   /"_id"\s*:\s*"([^"]+)"/
+  }).map(function(rxp, attr){
+    return [attr, str.match(rxp)[1]];
+  }).object().value();
 }
 
 HallClient.prototype.getConfig = function(callback){
@@ -114,7 +119,7 @@ HallClient.prototype.getConfig = function(callback){
       }).join('\n');
 
     this.streamConfig = extractStreamConfig(configScripts);
-    this.userInfo = extractUserInfo(configScripts);
+    this.userInfo     = extractUserInfo(configScripts);
     return callback();
   }.bind(this));
 };
@@ -122,8 +127,8 @@ HallClient.prototype.getConfig = function(callback){
 HallClient.prototype.getRooms = function(callback){
   debug('> Getting list of rooms');
   request({
-    url: 'https://hall.com/api/1/rooms/groups',
-    jar: this.cookies,
+    url:  'https://hall.com/api/1/rooms/groups',
+    jar:  this.cookies,
     json: true
   }, function(err, response){
     if (err) return callback(err);
@@ -148,27 +153,31 @@ HallClient.prototype.connect = function(callback){
   this.client = new SocketIOClient(this.socketIOUrl(), this.cookies);
 
   this.client.on('event', function(message){
-    console.log('Received:', message);
-  });
+    if (message.data.name !== 'ROOM_ITEM_NEW') return;
+    this.emit('message', JSON.parse(message.data.args[0]));
+  }.bind(this));
 
   this.client.once('connect', function(){
     debug('> Client connected');
-    debug('> Joining room');
-    this.client.sendEvent('join room', {
-      "uuid": "37f20834df",
-        "member": {
-          "name": "David Cornu",
-          "id": "1449610",
-          "hall_member_id": null,
-          "hall_uuid": null,
-          "photo_url": "",
-          "mobile": false,
-          "native": false,
-          "admin": false
-        },
-      "member_uuid": "2d371a6959311f7ea179d75f6d6e5359"
-    });
+    this.emit('connect');
   }.bind(this));
 };
 
-var client = new HallClient('davidjcornu@gmail.com', 'testing');
+HallClient.prototype.joinRoom = function(roomId){
+  debug('> Joining room');
+  this.room = _.find(this.rooms, function(r){ return r._id === roomId; });
+  this.client.sendEvent('join room', {
+    uuid: roomId,
+      member: {
+        name:           this.userInfo.name,
+        id:             this.userInfo.id,
+        hall_member_id: null,
+        hall_uuid:      null,
+        photo_url:      "",
+        mobile:         false,
+        native:         false,
+        admin:          false
+      },
+    member_uuid: this.userInfo.uuid
+  });
+};
